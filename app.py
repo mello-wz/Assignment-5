@@ -1,86 +1,175 @@
 import streamlit as st
+import pandas as pd
+from datetime import date
 
-st.title("About Streamlit")
-st.header("A simple section that'll explain:")
-st.write("Interactive introduction to Streamlit components")
+if "transactions" not in st.session_state:
+    try:
+        st.session_state.transactions = pd.read_csv("transactions.csv")
+    except FileNotFoundError:
+        st.session_state.transactions = pd.DataFrame(columns=["Date", "Description", "Amount", "Category"])
+ 
+st.title("Student Weekly Allowance Tracker")
 
-st.markdown("""
-* What does it do?
-* Who is the target user?
-* What input does the app collect, and what output does it shows
+#my sidebar
 
-""")
+st.sidebar.header("Settings")
+name = st.sidebar.text_input("Your Name")
+weekly_budget = st.sidebar.number_input("Weekly Budget", min_value=0, value=1500)
+savings_goal = st.sidebar.number_input("Savings Goal")
 
-st.divider()
+#tabs
+tab1, tab2, tab3, tab4 = st.tabs(["Add Transaction", "History", "Analytics", "About"])
 
-# me part
+#sample data
+try:
+    df = pd.read_csv("transactions.csv")
+except FileNotFoundError:
+    df = pd.DataFrame(columns=["Date", "Description", "Amount", "Category"])
 
-st.header("Profile")
 
-col1, col2 = st.columns(2)
-with col1:
-    option = st.selectbox(
-        'Click me for introductory information',
-        ('Select --', 'Name', 'Age', 'Course', 'Section')
+# tab 1 - add transaction
+with tab1:
+    st.header("Add a New Transaction")
+
+    transaction_type = st.radio("Transaction Type", ("Expense (money going in)", "Income (money going out)"))
+
+    description = st.text_input("Description")
+
+    amount = st.number_input("Amount", min_value=0.0, format="%.2f")
+
+    transaction_date = st.date_input("Date", value=date.today())
+
+    category = st.selectbox("Category", ["Food", "Transport", "School Necessities", "Entertainment", "Savings"])
+
+    recurring = st.checkbox("Recurring Transaction")
+
+    if st.button("Add Transaction"):
+
+        #flip amount for income
+        amount_value = -amount if "Income (money going out)" in transaction_type else amount
+        
+        new_transaction = {
+            "Date": transaction_date,
+            "Description": description,
+            "Amount": amount,
+            "Category": category
+        }
+
+        # add new transaction to dataframe
+        st.session_state.transactions = pd.concat(
+            [st.session_state.transactions, pd.DataFrame([new_transaction])],
+            ignore_index=True
+        )
+
+        # save to csv
+        st.session_state.transactions.to_csv("transactions.csv", index=False)
+        st.success("Transaction added!")
+
+
+# tab 2 - history
+with tab2:
+    st.header("Transaction History")
+
+    # category filter
+    filter_category = st.multiselect(
+        "Filter by Category",
+        options=["Food", "Transportation", "School Necessities", "Entertainment"]
     )
 
-    if st.checkbox("Here's a picture of baby yoda for luck!"):
-        st.image("https://imageio.forbes.com/specials-images/imageserve/5f9c50b1e392338a52d670be/0x0.jpg?format=jpg&height=900&width=1600&fit=bounds")
+    # apply filter dynamically
+    if filter_category:
+        filtered_df = st.session_state.transactions[
+            st.session_state.transactions["Category"].isin(filter_category)
+        ]
+    else:
+        filtered_df = st.session_state.transactions
 
-with col2:
-    if option == 'Name':
-        st.info("Hi! I'm Mark Vincent A. Bartolay")
-    elif option == 'Age':
-        st.info("I'm 19 years old")
-    elif option == 'Course':
-        st.info("I'm taking Bachelor of Science in Information Technology")
-    elif option == 'Section':
-        st.info("I'm currently in 2nd Year in ICS-01-401A")
+    # display filtered table
+    st.dataframe(filtered_df)
 
-st.divider()
+    uploaded = st.file_uploader("Upload CSV")
 
-# start
-
-st.header("Streamlit Introduction")
-
-tab1, tab2, tab3 = st.tabs([
-    "What does it do?", 
-    "Who is the target user?", 
-    "Inputs & Outputs"
-])
-with tab1:
-    st.info("This app is a simple introduction to Streamlit, a powerful framework for building interactive web applications in Python. It allows users to create and share data-driven applications with ease, making it an ideal tool for data scientists, analysts, and developers.")
-    st.code("import streamlit as st\n\nst.title('Hello, Streamlit!')")
-with tab2:
-    st.info("The target user of this app is anyone interested in learning about Streamlit or building interactive web applications in Python. This includes data scientists, analysts, and developers who want to create engaging and informative data visualizations and dashboards.")
-    st.caption("This tab explains who can benefit from Streamlit")
+    st.download_button("Download Transactions",
+        df.to_csv(),
+        "transactions.csv"
+        )
+    
+# tab 3 - analytics
 with tab3:
-    st.success("The app collects user input through various widgets like selectboxes, sliders, and text inputs. The output is displayed in real-time using Streamlit's built-in components like markdown, tables, and charts.")
+    st.header("Financial Analytics")
 
-# conclusion
+    # calculate totals
+    total_expenses = st.session_state.transactions[st.session_state.transactions["Amount"] > 0]["Amount"].sum()
+    total_income = st.session_state.transactions[st.session_state.transactions["Amount"] < 0]["Amount"].abs().sum()
+    
+    remaining_allowance = weekly_budget + total_income - total_expenses
+    progress = min(total_expenses / weekly_budget, 1.0) if weekly_budget > 0 else 0
 
-st.divider()
+    # metrics
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Weekly Allowance", f"P {weekly_budget}")
+    col2.metric("Total Expenses", f"P {total_expenses}")
+    col3.metric("Remaining Money", f"P {remaining_allowance}")
 
-st.header("Conclusion")
+    # savings Progress
+    st.subheader("Savings Progress")
+    st.progress(progress)
 
-st.success("Great! Now you have an idea of what Streamlit is and how it can be used to create interactive web applications. Rate your understanding of Streamlit on a scale of 1 to 10:")
-rating = st.slider("Rate your understanding of Streamlit", 1, 10, 5)
-st.write(f"Your rating: {rating}")
-st.button("Submit")
-st.balloons()
+    # weekly spending trend (line chart)
+    st.subheader("Weekly Spending Trend")
+    if not st.session_state.transactions.empty:
 
-hours = st.number_input("How many hours did you study Streamlit today?", 0, 24)
-st.info(f"You studied {hours} hours today")
+        # group by date and sum expenses
+        weekly_trend = st.session_state.transactions.groupby("Date")["Amount"].sum()
+        st.line_chart(weekly_trend)
+    else:
+        st.line_chart([0])
 
-learn = st.radio(
-    "Did you learn something new about Streamlit today?",
-    ("Yes", "No")
-)
+    # category spending (bar chart)
+    st.subheader("Category Spending")
+    if not st.session_state.transactions.empty:
+        category_spending = st.session_state.transactions.groupby("Category")["Amount"].sum()
+        st.bar_chart(category_spending)
+    else:
+        st.bar_chart([0])
 
-st.text_input("Share your experience with Streamlit")
-st.info("Thanks for sharing!")
+    # tips
+    with st.expander("Financial Tips"):
+        st.write("Try to save at least 20% of your allowance each week!")
 
+# tab 4 - about
+with tab4:
+    st.header("About This App")
+    st.write("""
+        The Student Weekly Allowance Tracker helps students manage their weekly allowance by tracking their 
+    income and expenses. It provides visual analytics, spending trends, and category breakdowns to help 
+    students understand their spending habits and save money.
+    """)
 
-upload_image = st.file_uploader("Upload an image to share your Streamlit experience")
-if upload_image:
-    st.image(upload_image, width=150)
+    st.subheader("Target Users")
+    st.write("""
+      This app is designed for students who receive a weekly allowance and want to manage their money more effectively. 
+    It helps them track expenses, monitor spending, and make better financial decisions.
+    """)
+
+    st.subheader("Inputs Collected")
+    st.write("""
+    - **Transaction Type**: Expense or Income
+    - **Description**: Short description of the transaction
+    - **Amount**: Amount spent or received
+    - **Date**: Date of the transaction
+    - **Category**: Type of spending (Food, Transport, School Necessities, Entertainment, Savings)
+    - **Recurring**: Whether the transaction repeats
+    - **Weekly Budget**: Student's weekly allowance
+    - **Savings Goal**: Target savings for the week
+    """)
+
+    st.subheader("Outputs Shown")
+    st.write("""
+    - **Transaction History Table**: Shows all recorded transactions
+    - **Total Expenses & Remaining Allowance**
+    - **Savings Progress Bar**
+    - **Weekly Spending Trend Chart**
+    - **Category Spending Chart**
+    - **Downloadable CSV of Transactions**
+    """)  
